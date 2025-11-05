@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, TouchableHighlight } from "react-native";
 import { timerStyles } from "../app/styles";
 import { Audio } from "expo-av";
-// import KeepAwake from "react-native-keep-awake";
+import KeepAwake from "react-native-keep-awake";
 import ScrollPicker from "react-native-wheel-scrollview-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 const finalBuzzer = require("../assets/audio/mixkit-basketball-buzzer-1647.wav");
@@ -311,7 +311,7 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
           <Text style={timerStyles.buttonText}>ZERAR</Text>
         </TouchableHighlight>
       </View>
-      {/* <KeepAwake /> */}
+      <KeepAwake />
     </View>
   );
 };
