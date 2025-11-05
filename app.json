@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "basketballTimer",
-    "slug": "basketballTimer",
+    "slug": "basketballtimer",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/timerApp.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,20 +17,32 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
+        "foregroundImage": "./assets/timerApp.jpg"
+      },
+      "package": "com.tagarela89.basketballtimer"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/timerApp.jpg"
     },
     "plugins": [
       "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "9c5187e3-6946-4cd1-bab2-06084c6d894a"
+      }
+    },
+    "fonts": [
+      {
+        "family": "DSEG14Classic-Regular",
+        "file": "./assets/fonts/DSEG14Classic-Regular.ttf"
+      }
+    ],
+    "owner": "tagarela89"
   }
 }
