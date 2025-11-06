@@ -2,17 +2,19 @@ import React, { useEffect, useState } from "react";
 import { View, Text, TouchableHighlight } from "react-native";
 import { timerStyles } from "../app/styles";
 import { Audio } from "expo-av";
-import KeepAwake from "react-native-keep-awake";
+// import KeepAwake from "react-native-keep-awake";
 import ScrollPicker from "react-native-wheel-scrollview-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 const finalBuzzer = require("../assets/audio/mixkit-basketball-buzzer-1647.wav");
 const nbaPiano = require("../assets/audio/nba_audio.mp3");
+const startGame = require("../assets/audio/start_game.mp3");
 const calvaryString = require("../assets/audio/baseball-calvary-sting-long-sustain-102081.mp3");
 const baseballOrgan = require("../assets/audio/baseball-organ-106664.mp3");
 const bbClaprhm = require("../assets/audio/bb-claprhm-87606.mp3");
+const crossover = require("../assets/audio/crossover-21738.mp3");
 
-// Array de áudios para tocar aleatoriamente durante o timer
-const randomAudios = [calvaryString, baseballOrgan, bbClaprhm];
+// Array de áudios para tocar aleatoriamente durante o timer (a cada 30 segundos)
+const randomAudios = [calvaryString, baseballOrgan, bbClaprhm, crossover];
 const generatePickerData = (maxValue: number) => {
   return Array.from({ length: maxValue }, (_, index) =>
     String(index).padStart(2, "0")
@@ -29,11 +31,12 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
   const [minutes, setMinutes] = useState("00");
   const [seconds, setSeconds] = useState("00");
   const [isTimerStart, setIsTimerStart] = useState(false);
-  const [sound, setSound] = useState();
-  const [lastTimer, setLastTimer] = useState(["00", "00"]);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [initialTimer, setInitialTimer] = useState<[string, string] | null>(null); // Tempo inicial configurado
   const [isMuteAudio, setIsMuteAudio] = useState(false);
   const [endTimestamp, setEndTimestamp] = useState<number | null>(null);
   const [playedAudioTimes, setPlayedAudioTimes] = useState<Set<number>>(new Set());
+  const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
 
   // Carregar dados salvos ao montar o componente
   useEffect(() => {
@@ -42,13 +45,13 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
 
   const loadSavedTimer = async () => {
     try {
-      const savedTimer = await AsyncStorage.getItem("lastTimerConfig");
+      const savedInitialTimer = await AsyncStorage.getItem("initialTimerConfig");
       const savedEndTimestamp = await AsyncStorage.getItem("timerEndTimestamp");
       const savedIsRunning = await AsyncStorage.getItem("timerIsRunning");
 
-      if (savedTimer) {
-        const [savedMinutes, savedSeconds] = JSON.parse(savedTimer);
-        setLastTimer([savedMinutes, savedSeconds]);
+      if (savedInitialTimer) {
+        const [savedMinutes, savedSeconds] = JSON.parse(savedInitialTimer);
+        setInitialTimer([savedMinutes, savedSeconds]);
 
         // Se o timer estava rodando
         if (savedIsRunning === "true" && savedEndTimestamp) {
@@ -80,11 +83,11 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
     }
   };
 
-  const saveTimerConfig = async (min: string, sec: string) => {
+  const saveInitialTimerConfig = async (min: string, sec: string) => {
     try {
-      await AsyncStorage.setItem("lastTimerConfig", JSON.stringify([min, sec]));
+      await AsyncStorage.setItem("initialTimerConfig", JSON.stringify([min, sec]));
     } catch (error) {
-      console.error("Erro ao salvar configuração do timer:", error);
+      console.error("Erro ao salvar configuração inicial do timer:", error);
     }
   };
 
@@ -107,13 +110,13 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
           setMinutes(currentMinutes);
           setSeconds(currentSeconds);
 
-          // Tocar som aos 30 segundos (NBA Piano)
+          // Tocar som aos 30 segundos finais (NBA Piano)
           if (totalSeconds === 30) {
             playSound(nbaPiano);
           }
 
-          // Tocar áudios aleatórios em momentos específicos (a cada minuto, exceto no último minuto)
-          if (newSeconds === 0 && totalSeconds > 60 && !playedAudioTimes.has(totalSeconds)) {
+          // Tocar áudios aleatórios a cada 30 segundos (exceto nos últimos 30 segundos)
+          if (newSeconds === 0 && totalSeconds > 30 && totalSeconds % 30 === 0 && !playedAudioTimes.has(totalSeconds)) {
             const randomAudio = randomAudios[Math.floor(Math.random() * randomAudios.length)];
             playSound(randomAudio);
             setPlayedAudioTimes(prev => new Set(prev).add(totalSeconds));
@@ -128,17 +131,50 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isTimerStart, endTimestamp, playedAudioTimes]);
+  }, [isTimerStart, endTimestamp, playedAudioTimes, sound]);
 
-  async function playSound(audio: any) {
+  async function playSound(audio: any, maxDuration: number = 20000) {
     if (isMuteAudio === true || !audio) {
       return;
     }
 
-    const { sound } = await Audio.Sound.createAsync(audio);
+    try {
+      // Parar e descarregar o som anterior, se existir
+      if (sound) {
+        try {
+          const status = await sound.getStatusAsync();
+          if (status.isLoaded) {
+            if (status.isPlaying) {
+              await sound.stopAsync();
+            }
+            await sound.unloadAsync();
+          }
+        } catch (error) {
+          // Ignorar erro se o som já foi descarregado
+          console.log("Som anterior já foi descarregado");
+        }
+      }
 
-    setSound(audio);
-    await sound.playAsync();
+      const { sound: newSound } = await Audio.Sound.createAsync(audio);
+      setSound(newSound);
+      await newSound.playAsync();
+
+      // Parar o som após a duração máxima (20 segundos)
+      setTimeout(async () => {
+        try {
+          const status = await newSound.getStatusAsync();
+          if (status.isLoaded && status.isPlaying) {
+            await newSound.stopAsync();
+            await newSound.unloadAsync();
+          }
+        } catch (error) {
+          // Ignorar erro se o som já foi descarregado
+          console.log("Som já foi descarregado automaticamente");
+        }
+      }, maxDuration);
+    } catch (error) {
+      console.error("Erro ao tocar som:", error);
+    }
   }
 
   const handlePickerChange = async (item: string | undefined, type: "minutes" | "seconds") => {
@@ -146,31 +182,24 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
     if (item === undefined) return;
 
     if (!isTimerStart) {
-      let newMinutes = minutes;
-      let newSeconds = seconds;
-
       if (type === "minutes") {
-        newMinutes = item;
         setMinutes(item);
-        setLastTimer([item, seconds]);
       } else if (type === "seconds") {
-        newSeconds = item;
         setSeconds(item);
-        setLastTimer([minutes, item]);
       }
-
-      // Salvar configuração
-      await saveTimerConfig(newMinutes, newSeconds);
+      // Não salva automaticamente - apenas quando iniciar
     }
   };
 
   const resetTimer = async () => {
-    setIsTimerStart(false);
-    setEndTimestamp(null);
-    setMinutes(lastTimer[0]);
-    setSeconds(lastTimer[1]);
-    await AsyncStorage.setItem("timerIsRunning", "false");
-    await AsyncStorage.removeItem("timerEndTimestamp");
+    if (initialTimer) {
+      setIsTimerStart(false);
+      setEndTimestamp(null);
+      setMinutes(initialTimer[0]);
+      setSeconds(initialTimer[1]);
+      await AsyncStorage.setItem("timerIsRunning", "false");
+      await AsyncStorage.removeItem("timerEndTimestamp");
+    }
   };
 
   const resetTotalTimer = async () => {
@@ -178,8 +207,8 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
     setEndTimestamp(null);
     setMinutes("00");
     setSeconds("00");
-    setLastTimer(["00", "00"]);
-    await AsyncStorage.removeItem("lastTimerConfig");
+    setInitialTimer(null);
+    await AsyncStorage.removeItem("initialTimerConfig");
     await AsyncStorage.setItem("timerIsRunning", "false");
     await AsyncStorage.removeItem("timerEndTimestamp");
     resetTimmerComponent();
@@ -187,8 +216,10 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
 
   const handleFinish = async () => {
     playSound(finalBuzzer);
-    setMinutes(lastTimer[0]);
-    setSeconds(lastTimer[1]);
+    if (initialTimer) {
+      setMinutes(initialTimer[0]);
+      setSeconds(initialTimer[1]);
+    }
     setIsTimerStart(false);
     setEndTimestamp(null);
     await AsyncStorage.setItem("timerIsRunning", "false");
@@ -204,20 +235,33 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
       setIsTimerStart(false);
       setEndTimestamp(null);
       setPlayedAudioTimes(new Set()); // Resetar áudios tocados
+      setHasPlayedStartSound(false); // Resetar flag do som inicial
       await AsyncStorage.setItem("timerIsRunning", "false");
       await AsyncStorage.removeItem("timerEndTimestamp");
     } else {
-      // Iniciar o timer
+      // Iniciar ou continuar o timer
       const totalSeconds = parseInt(minutes) * 60 + parseInt(seconds);
       const endTime = Date.now() + totalSeconds * 1000;
 
+      // Se não há tempo inicial salvo, salvar o tempo atual como inicial
+      if (!initialTimer) {
+        setInitialTimer([minutes, seconds]);
+        await saveInitialTimerConfig(minutes, seconds);
+
+        // Tocar som de início apenas quando iniciar pela primeira vez
+        playSound(startGame);
+        setHasPlayedStartSound(true);
+      } else if (!hasPlayedStartSound) {
+        // Se está continuando após uma pausa, também tocar o som de início
+        playSound(startGame);
+        setHasPlayedStartSound(true);
+      }
+
       setEndTimestamp(endTime);
       setIsTimerStart(true);
-      setLastTimer([minutes, seconds]);
       setPlayedAudioTimes(new Set()); // Resetar áudios tocados ao iniciar
 
-      // Salvar no AsyncStorage
-      await saveTimerConfig(minutes, seconds);
+      // Salvar estado de execução
       await AsyncStorage.setItem("timerIsRunning", "true");
       await AsyncStorage.setItem("timerEndTimestamp", endTime.toString());
     }
@@ -281,37 +325,40 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
           <Text
             style={{
               ...timerStyles.buttonText,
-              color: minutes === "00" && seconds === "00" ? "white" : "green",
+              color: minutes === "00" && seconds === "00" ? "white" : (isTimerStart ? "red" : "green"),
             }}
           >
-            {isTimerStart ? "PARAR" : "INICIAR"}
+            {isTimerStart ? "PARAR" : (initialTimer ? "CONTINUAR" : "INICIAR")}
           </Text>
         </TouchableHighlight>
         <TouchableHighlight
           onPress={() => setIsMuteAudio(!isMuteAudio)}
           style={timerStyles.muteButton}
-          disabled={isTimerStart}
         >
           <Text style={timerStyles.muteButtonText}>
             {isMuteAudio ? "🔇" : "🔊"}
           </Text>
         </TouchableHighlight>
-        <TouchableHighlight
-          onPress={() => resetTimer()}
-          style={timerStyles.button}
-          disabled={isTimerStart}
-        >
-          <Text style={timerStyles.buttonText}>RESETAR</Text>
-        </TouchableHighlight>
-        <TouchableHighlight
-          onPress={() => resetTotalTimer()}
-          style={timerStyles.button}
-          disabled={isTimerStart}
-        >
-          <Text style={timerStyles.buttonText}>ZERAR</Text>
-        </TouchableHighlight>
+       {!isTimerStart && 
+        <>
+          <TouchableHighlight
+              onPress={() => resetTimer()}
+              style={timerStyles.button}
+              disabled={isTimerStart}
+            >
+              <Text style={timerStyles.buttonText}>RESETAR</Text>
+            </TouchableHighlight>
+            <TouchableHighlight
+              onPress={() => resetTotalTimer()}
+              style={timerStyles.button}
+              disabled={isTimerStart}
+            >
+              <Text style={timerStyles.buttonText}>ZERAR</Text>
+            </TouchableHighlight>
+        </>
+       }       
       </View>
-      <KeepAwake />
+      {/* <KeepAwake /> */}
     </View>
   );
 };
