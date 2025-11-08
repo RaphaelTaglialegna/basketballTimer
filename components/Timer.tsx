@@ -1,5 +1,6 @@
 import React from "react";
 import { Text, View } from "react-native";
+import KeepAwake from "react-native-keep-awake";
 import { timerStyles } from "../app/styles";
 import { useTimer } from "../hooks/useTimer";
 import { useAudio } from "../hooks/useAudio";
@@ -82,6 +83,7 @@ const TimerComponent = ({ resetTimmerComponent }: IProps) => {
         onTotalReset={resetTotalTimer}
         onToggleMute={toggleMute}
       />
+      <KeepAwake />
     </View>
   );
 };

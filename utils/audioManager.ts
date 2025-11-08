@@ -5,6 +5,7 @@ export class AudioManager {
   private currentSound: Audio.Sound | null = null;
   private isPlaying: boolean = false;
   private isMuted: boolean = false;
+  private timeoutId: any = null;
 
   setMuted(muted: boolean) {
     this.isMuted = muted;
@@ -24,15 +25,33 @@ export class AudioManager {
     try {
       this.isPlaying = true;
 
+      // Limpar timeout anterior se existir
+      if (this.timeoutId) {
+        clearTimeout(this.timeoutId);
+        this.timeoutId = null;
+      }
+
       // Parar e descarregar o som anterior, se existir
       await this.stopCurrentSound();
 
       const { sound: newSound } = await Audio.Sound.createAsync(audio);
       this.currentSound = newSound;
+
+      // Configurar callback para quando o áudio terminar naturalmente
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          this.isPlaying = false;
+          if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+          }
+        }
+      });
+
       await newSound.playAsync();
 
       // Parar o som após a duração máxima
-      setTimeout(async () => {
+      this.timeoutId = setTimeout(async () => {
         try {
           const status = await newSound.getStatusAsync();
           if (status.isLoaded && status.isPlaying) {
@@ -40,18 +59,30 @@ export class AudioManager {
             await newSound.unloadAsync();
           }
           this.isPlaying = false;
+          this.timeoutId = null;
         } catch (error) {
           console.log("Som já foi descarregado automaticamente");
           this.isPlaying = false;
+          this.timeoutId = null;
         }
       }, maxDuration);
     } catch (error) {
       console.error("Erro ao tocar som:", error);
       this.isPlaying = false;
+      if (this.timeoutId) {
+        clearTimeout(this.timeoutId);
+        this.timeoutId = null;
+      }
     }
   }
 
   async stopCurrentSound(): Promise<void> {
+    // Limpar timeout se existir
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+
     if (this.currentSound) {
       try {
         const status = await this.currentSound.getStatusAsync();
